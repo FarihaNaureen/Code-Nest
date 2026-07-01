@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Nest: Entrance Gates</title>
+    <div th:replace="~{fragments :: imports}"></div>
+</head>
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- Navigation Bar -->
+    <div th:replace="~{fragments :: hudNav}"></div>
+
+    <!-- Main Auth Content Area -->
+    <main style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 60px 20px; position: relative; z-index: 10;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 420px; position: relative;">
+            
+            <!-- CRT monitor speech box -->
+            <div style="position: relative; margin-bottom: 20px; display: flex; align-items: center; gap: 15px;">
+                <img src="/images/pixel_crt_computer.png" style="width: 70px; height: 70px; animation: float 3s infinite ease-in-out;" />
+                <!-- Speech Bubble -->
+                <div style="background: white; border: 2px solid #000; border-radius: 8px; padding: 10px 15px; color: #000; font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: bold; line-height: 1.3; max-width: 250px; position: relative; box-shadow: 3px 3px 0 rgba(0,0,0,0.15);">
+                    <span th:text="${param.registered != null ? 'Account created! Log in to save progress :)' : 'Log in to load your coding progress :)'}">Log in to load your coding progress :)</span>
+                    <!-- Bubble triangle pointer pointing left -->
+                    <div style="position: absolute; left: -8px; top: 50%; transform: translateY(-50%) rotate(45deg); width: 12px; height: 12px; background: white; border-left: 2px solid #000; border-bottom: 2px solid #000;"></div>
+                </div>
+            </div>
+
+            <!-- White Auth Card -->
+            <div class="codedex-auth-card">
+                <h2 style="font-family: var(--font-heading); color: var(--text-primary); text-align: center; font-size: 1.25rem; margin-bottom: 25px; letter-spacing: 1px;">Academy Log In</h2>
+                
+                <!-- Success/Error alert bubbles -->
+                <div th:if="${param.registered}" style="background: rgba(16, 185, 129, 0.1); border: 1px solid var(--emerald); color: #065f46; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.8rem; font-weight: 600; text-align: center;">
+                    Registration successful! Cross the threshold.
+                </div>
+                <div th:if="${error}" style="background: rgba(239, 68, 68, 0.1); border: 1px solid red; color: #991b1b; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.8rem; font-weight: 600; text-align: center;" th:text="${error}">
+                    Invalid credentials.
+                </div>
+
+
+
+                <form th:action="@{/auth/login}" method="POST">
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" placeholder="Enter your codename..." required="required" style="width: 100%;" />
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 25px;">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="Enter your secret spell..." required="required" style="width: 100%;" />
+                    </div>
+
+                    <button type="submit" class="btn-secondary" style="width: 100%; font-size: 0.95rem; padding: 12px 20px;">Log in</button>
+                </form>
+
+                <div style="font-size: 0.85rem; margin-top: 25px; text-align: center; color: #64748b;">
+                    New initiate? <a href="/auth/register" style="color: #38bdf8; font-weight: bold; text-decoration: none;">Apply to the Academy</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+
+
+    <!-- Footer Component -->
+    <div th:replace="~{fragments :: footer}"></div>
+
+</body>
+</html>

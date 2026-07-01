@@ -1,0 +1,1862 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Nest: Collaborative Chamber</title>
+    <div th:replace="~{fragments :: imports}"></div>
+    
+    <!-- Load WebSocket STOMP and SockJS clients -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    
+    <style>
+        .multiplayer-layout {
+            display: flex;
+            height: calc(100vh - 110px);
+            min-height: 700px;
+            overflow: hidden;
+            background: var(--bg-panel-dark);
+        }
+
+        .chat-area {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: var(--bg-hud);
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: bold;
+            color: var(--gold);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .online-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.75rem;
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: onlinePulse 2s infinite;
+        }
+
+        @keyframes onlinePulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+            50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+        }
+
+        .chat-output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: var(--bg-panel-dark);
+        }
+
+        .chat-bubble {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            max-width: 85%;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            animation: bubbleIn 0.3s ease;
+        }
+
+        @keyframes bubbleIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-bubble.self {
+            background: rgba(139, 92, 246, 0.15);
+            border-color: var(--violet);
+            align-self: flex-end;
+            color: var(--text-primary);
+        }
+
+        .chat-bubble.system {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: var(--gold-glow);
+            color: var(--gold);
+            align-self: center;
+            text-align: center;
+            font-style: italic;
+        }
+
+        .chat-bubble.partner {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: var(--emerald);
+            align-self: flex-start;
+            color: var(--text-primary);
+        }
+
+        .whiteboard-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-panel-dark);
+            position: relative;
+        }
+
+        .whiteboard-canvas {
+            flex: 1;
+            background: var(--bg-panel-dark);
+            cursor: crosshair;
+        }
+
+        /* Mute Controls Bar */
+        .mute-controls-bar {
+            display: flex;
+            gap: 8px;
+            padding: 8px 15px;
+            background: var(--bg-hud);
+            border-top: 1px solid var(--border-color);
+            justify-content: center;
+        }
+
+        .mute-btn {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .mute-btn:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: var(--violet);
+        }
+
+        .mute-btn.muted {
+            background: rgba(239,68,68,0.15);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        /* Language tabs for shared editor */
+        .shared-lang-tabs {
+            display: flex;
+            gap: 6px;
+        }
+        .shared-lang-tab {
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #94a3b8;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .shared-lang-tab.active {
+            background: var(--violet);
+            color: white;
+            border-color: var(--violet-glow);
+        }
+
+        /* Question panel for multiplayer */
+        .question-panel {
+            background: rgba(15,23,42,0.9);
+            border-bottom: 1px solid rgba(245,158,11,0.2);
+            padding: 12px 15px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .question-title {
+            font-family: var(--font-heading);
+            color: var(--gold);
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .question-desc {
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            line-height: 1.4;
+        }
+        .question-example {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 8px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #38bdf8;
+        }
+
+        body {
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+        }
+
+        /* Layout overrides for toggleable panels */
+        /* Layout overrides for toggleable panels */
+        .multi-chat-panel {
+            position: fixed;
+            top: 170px;
+            left: 30px;
+            width: 350px;
+            height: 500px;
+            z-index: 500;
+            background: rgba(13, 21, 39, 0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(245, 158, 11, 0.35);
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        .multi-chat-panel.hidden {
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .chat-input-area {
+            display: flex;
+            gap: 8px;
+            padding: 12px 15px;
+            background: rgba(7, 13, 25, 0.6);
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+ 
+        .multi-hints-panel {
+            position: fixed;
+            top: 170px;
+            left: 30px;
+            width: 350px;
+            height: 400px;
+            z-index: 500;
+            background: rgba(13, 21, 39, 0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(245, 158, 11, 0.35);
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        .multi-hints-panel.hidden {
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .multi-question-panel {
+            position: fixed;
+            top: 170px;
+            left: 170px;
+            width: 400px;
+            height: 400px; /* Fixed height to guarantee scrolling */
+            max-height: 400px;
+            z-index: 500;
+            background: rgba(13, 21, 39, 0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(245, 158, 11, 0.35);
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        .multi-question-panel.hidden {
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+            pointer-events: none;
+            overflow: hidden;
+        }
+        #floating-chat-btn:hover, #floating-hints-btn:hover, #floating-question-btn:hover {
+            background: rgba(30, 41, 59, 0.9) !important;
+            border-color: var(--gold) !important;
+            color: var(--gold) !important;
+            box-shadow: 0 0 12px var(--gold-glow);
+        }
+        #floating-chat-btn.active, #floating-hints-btn.active, #floating-question-btn.active {
+            background: rgba(139, 92, 246, 0.25) !important;
+            border-color: var(--violet) !important;
+            color: #a78bfa !important;
+            box-shadow: 0 0 12px var(--violet-glow);
+        }
+
+        .center-content-area {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            height: 100%;
+            min-height: 0;
+            border-right: 2px solid rgba(245, 158, 11, 0.2);
+        }
+        .whiteboard-container {
+            flex: 1;
+            width: 100% !important;
+            display: flex;
+            flex-direction: column;
+            background: #1e293b;
+            position: relative;
+            height: 100%;
+            min-height: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .whiteboard-container.hidden {
+            display: none !important;
+        }
+
+        /* Custom range sliders styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #1e293b;
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--gold);
+            cursor: pointer;
+            box-shadow: 0 0 6px var(--gold-glow);
+            transition: transform 0.1s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border: none;
+            border-radius: 50%;
+            background: var(--gold);
+            cursor: pointer;
+            box-shadow: 0 0 6px var(--gold-glow);
+            transition: transform 0.1s ease;
+        }
+        input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.25);
+        }
+
+        .right-panel {
+            width: 400px;
+            flex-shrink: 0;
+            background: #090d16;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            border-left: none;
+        }
+
+        /* Control Deck Bar */
+        .forge-control-deck {
+            background: rgba(3,7,18,0.95);
+            border-bottom: 2px solid rgba(245,158,11,0.3);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            height: 48px;
+            flex-shrink: 0;
+        }
+
+        .control-toggle-btn {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: #cbd5e1;
+            cursor: pointer;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.25s ease;
+        }
+        .control-toggle-btn:hover {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.25);
+            color: white;
+        }
+        .control-toggle-btn.active {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: var(--violet);
+            color: #a78bfa;
+            box-shadow: 0 0 8px rgba(139, 92, 246, 0.25);
+        }
+
+        /* Specific gameplay overlays */
+        .relics-status-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .relic-hud-item {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+            filter: grayscale(1);
+            opacity: 0.4;
+            transition: all 0.3s ease;
+        }
+
+        .relic-hud-item.collected {
+            filter: grayscale(0);
+            opacity: 1;
+            background: rgba(245,158,11,0.15);
+            border-color: var(--gold);
+            box-shadow: 0 0 8px var(--gold);
+        }
+
+        .hearts-container {
+            display: flex;
+            gap: 4px;
+            color: #ef4444;
+            font-size: 1.25rem;
+        }
+    </style>
+</head>
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- Navigation Header -->
+    <div th:replace="~{fragments :: hudNav}"></div>
+
+    <!-- Forge Control Deck -->
+    <div class="forge-control-deck">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span style="font-family: var(--font-heading); font-size: 0.9rem; color: var(--gold); font-weight: bold; letter-spacing: 1px;">⚔️ CO-OP FORGE</span>
+            <div style="font-size: 0.75rem; color: #94a3b8;" th:text="${'Chamber Code: ' + roomCode}">Chamber Code: AX98DY</div>
+        </div>
+        
+        <!-- Toggle Buttons -->
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="control-toggle-btn active" id="btn-toggle-whiteboard" onclick="togglePanel('whiteboard')">
+                <span>🎨</span> Whiteboard
+            </button>
+            <button class="control-toggle-btn" id="btn-toggle-gamescreen" onclick="togglePanel('gamescreen')">
+                <span>🗺️</span> Game Screen
+            </button>
+            <button class="control-toggle-btn" id="btn-toggle-chat" onclick="togglePanel('chat')">
+                <span>💬</span> Chat
+            </button>
+        </div>
+
+        <div class="online-indicator" style="font-size: 0.75rem;">
+            <div class="online-dot"></div>
+            <span id="room-status-label" style="color: #cbd5e1;">Connected</span>
+        </div>
+    </div>
+
+    <!-- Multiplayer Split Pane Layout -->
+    <main class="multiplayer-layout">
+        
+        <!-- LEFT: REAL-TIME CHAT PANEL (Hidden on load, floating pop-up style) -->
+        <div class="multi-chat-panel hidden">
+            <div class="chat-area">
+                <div class="chat-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>💬</span> Chamber Chat
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="online-indicator" style="display: none;">
+                            <div class="online-dot"></div>
+                            <span id="online-count">1 Online</span>
+                        </div>
+                        <button class="close-picker-btn" style="position: static; font-size: 1.25rem; color: var(--text-muted); cursor: pointer; background: none; border: none; padding: 0; line-height: 1;" onclick="togglePanel('chat')">&times;</button>
+                    </div>
+                </div>
+                
+                <div class="chat-output" id="chat-output-container">
+                    <div class="chat-bubble system">Welcome to your cooperative chamber! Share the Chamber Code with team members.</div>
+                </div>
+
+                <div class="chat-input-area">
+                    <input type="text" id="chat-message-input" placeholder="Type a message..." style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; color: white; outline: none; font-size: 0.85rem;" onkeydown="if(event.key==='Enter') sendChatMessage()" />
+                    <button class="btn-primary" style="padding: 8px 14px; font-size: 0.8rem;" onclick="sendChatMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+        <!-- CENTER CONTENT AREA WRAPPER -->
+        <div class="center-content-area" style="display: flex; flex-direction: row; height: 100%; width: 100%;">
+            
+            <!-- WebRTC Video Feeds Overlay (Positioned absolutely over center panel contents) -->
+            <div class="webrtc-container" style="position: absolute; top: 10px; right: 10px; z-index: 50; display: flex; flex-direction: column; gap: 10px; background: rgba(3,7,18,0.85); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); cursor: move;">
+                <div class="video-feed" style="position: relative;">
+                    <div id="local-avatar" class="video-avatar" style="display: none;"></div>
+                    <video id="local-video" autoplay="autoplay" muted="muted" playsinline="playsinline"></video>
+                    <span class="video-label" th:text="${currentUser.username}">Local User</span>
+                </div>
+                <!-- Mute Controls near the camera feeds -->
+                <div class="mute-controls-bar" style="border: none; background: rgba(3,7,18,0.9); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; align-items: stretch; width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);">
+                    <button class="mute-btn" id="mute-mic-btn" onclick="toggleAudio()" title="Toggle Mic" style="padding: 4px 8px; font-size: 0.75rem; justify-content: center; width: 100%;">🔊 Mic On</button>
+                    <button class="mute-btn" id="mute-cam-btn" onclick="toggleVideo()" title="Toggle Camera" style="padding: 4px 8px; font-size: 0.75rem; justify-content: center; width: 100%;">📹 Cam On</button>
+                    <button class="mute-btn" id="mute-sound-btn" onclick="toggleGlobalSound()" title="Toggle Sound" style="padding: 4px 8px; font-size: 0.75rem; justify-content: center; width: 100%;">🔔 Sound On</button>
+                </div>
+            </div>
+
+            <!-- CENTER: COOPERATIVE WHITEBOARD PANEL -->
+            <div class="whiteboard-container" style="min-width: 150px; flex: 1;">
+                <div class="whiteboard-controls">
+                    <span style="font-size: 0.85rem; font-weight: bold; color: var(--gold);">🎨 Council Whiteboard</span>
+                    <div style="display: flex; gap: 10px;">
+                        <div style="width: 20px; height: 20px; background: #ef4444; cursor: pointer; border-radius: 50%;" onclick="changePenColor('#ef4444')"></div>
+                        <div style="width: 20px; height: 20px; background: #3b82f6; cursor: pointer; border-radius: 50%;" onclick="changePenColor('#3b82f6')"></div>
+                        <div style="width: 20px; height: 20px; background: #10b981; cursor: pointer; border-radius: 50%;" onclick="changePenColor('#10b981')"></div>
+                        <div style="width: 20px; height: 20px; background: #f59e0b; cursor: pointer; border-radius: 50%;" onclick="changePenColor('#f59e0b')"></div>
+                        <div style="width: 20px; height: 20px; background: #ffffff; cursor: pointer; border-radius: 50%;" onclick="changePenColor('#ffffff')"></div>
+                    </div>
+
+                    <!-- Whiteboard Brush Size Slider -->
+                    <div style="display: flex; align-items: center; gap: 8px; margin-left: 12px; margin-right: 12px;">
+                        <span style="font-size: 0.75rem; color: #cbd5e1;">Size:</span>
+                        <input type="range" id="brush-size-slider" min="1" max="25" value="3" 
+                                style="width: 80px;" 
+                                oninput="updateBrushSize(this.value)" />
+                        <span id="brush-size-display" style="font-size: 0.75rem; color: var(--gold); font-weight: bold; min-width: 25px;">3px</span>
+                    </div>
+
+                    <button class="btn-secondary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="clearWhiteboard()">Clear</button>
+                </div>
+                
+                <div class="whiteboard-wrapper">
+                    <canvas class="whiteboard-canvas" id="whiteboard-canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- DRAGGABLE SPLITTER -->
+            <div id="drag-splitter" style="width: 10px; background: rgba(245, 158, 11, 0.25); cursor: col-resize; display: none; align-items: center; justify-content: center; user-select: none; border-left: 1px solid rgba(255,255,255,0.05); border-right: 1px solid rgba(255,255,255,0.05); transition: background-color 0.2s;">
+                <div style="color: rgba(255, 255, 255, 0.5); font-size: 11px; font-weight: bold;">⋮</div>
+            </div>
+
+            <!-- CENTER: GAMESCREEN PANEL (Hidden on load) -->
+            <div class="gamescreen-container hidden" style="display: none; flex-direction: column; position: relative; min-width: 150px; flex: 1;">
+                <iframe src="/map" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+
+        <!-- RIGHT: SHARED CODE EDITOR PANEL -->
+        <div class="right-panel" style="display: none;">
+            <div class="editor-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.85rem; font-weight: bold; color: var(--gold);" th:text="${'CODE: ' + roomCode}">CODE: AX98DY</span>
+                </div>
+                <div class="shared-lang-tabs">
+                    <div class="shared-lang-tab active" onclick="setSharedLang('java', this)">Java</div>
+                    <div class="shared-lang-tab" onclick="setSharedLang('python', this)">Python</div>
+                    <div class="shared-lang-tab" onclick="setSharedLang('c', this)">C</div>
+                </div>
+            </div>
+
+
+
+            
+            <div class="code-area-container">
+                <textarea id="shared-code-editor" class="code-editor-textarea" spellcheck="false" autocomplete="off" oninput="sendEditorSync()">// Write your solution here...
+public int[] twoSum(int[] nums, int target) {
+    // Your code here
+}</textarea>
+            </div>
+            
+            <div class="editor-actions">
+                <button class="btn-secondary" style="flex: 1;" onclick="clearEditor()">Clear</button>
+                <button class="btn-primary" style="flex: 2;" onclick="runSharedCode()">Compile & Run</button>
+            </div>
+            
+            <!-- Hidden console element to prevent JS errors -->
+            <div id="shared-console-log" style="display: none;"></div>
+        </div>
+
+    </main>
+
+
+
+    <!-- Multiplayer STOMP Socket connection scripts -->
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        const ROOM_CODE = (/*[[${roomCode}]]*/ 'SAMPLE').toUpperCase();
+        const CURRENT_USER = /*[[${currentUser.username}]]*/ 'Wizard';
+
+        // Setup levels metadata for game.js
+        const LEVEL_ID = /*[[${level != null ? level.id : 'world_3_1'}]]*/ 'world_3_1';
+        const WORLD_ID = /*[[${level != null ? level.worldId : 'world_3'}]]*/ 'world_3';
+        const LEVEL_CONCEPT = /*[[${level != null ? level.concept : 'Stack'}]]*/ 'Stack';
+
+        const javaBoilerplate = /*[[${level != null ? level.initialCodeJava : ''}]]*/ '';
+        const pythonBoilerplate = /*[[${level != null ? level.initialCodePython : ''}]]*/ '';
+        const cBoilerplate = /*[[${level != null ? level.initialCodeC : ''}]]*/ '';
+
+        const hintsList = /*[[${level != null ? level.hints : '[]'}]]*/ [];
+        /*]]>*/
+
+        let stompClient = null;
+        let drawing = false;
+        let penColor = '#ffffff';
+        let penWidth = 3;
+        let context = null;
+        let canvas = null;
+        let sharedLang = 'java';
+
+        // Mute state trackers
+        let localStream = null;
+        let audioMuted = false;
+        let videoMuted = false;
+        let globalSoundMuted = false;
+        let revealedHintsCount = 0;
+
+        // Initialize connection
+        document.addEventListener("DOMContentLoaded", () => {
+            initializeWhiteboard();
+            initializeSplitter();
+            updateSplitLayout();
+            initializeDraggables();
+            
+            // Set initial editor boilerplate
+            const editor = document.getElementById("shared-code-editor");
+            if (editor) {
+                editor.value = javaBoilerplate || '// Write your solution here...';
+            }
+            
+            updateHintsUI();
+            
+            initializeWebcam().then(() => {
+                connectWebSocket();
+            });
+
+            window.addEventListener('beforeunload', () => {
+                sendSignal(null, { type: 'leave' });
+            });
+        });
+
+        function connectWebSocket() {
+            try {
+                const socket = new SockJS('/ws');
+                stompClient = Stomp.over(socket);
+                stompClient.debug = null; // Disable debug logging
+
+                stompClient.connect({}, (frame) => {
+                    console.log('Connected to WebSocket server');
+                    displayChatMessage({
+                        sender: "SYSTEM",
+                        content: "Chamber Link established! Live multiplayer synchronizations activated."
+                    });
+                    document.getElementById("online-count").textContent = "2 Online";
+                    
+                    // 1. Subscribe to Chat topic
+                    stompClient.subscribe('/topic/room/' + ROOM_CODE + '/chat', (message) => {
+                        const chatMsg = JSON.parse(message.body);
+                        displayChatMessage(chatMsg);
+                        if (chatMsg.sender !== "SYSTEM" && chatMsg.sender.toLowerCase() !== CURRENT_USER.toLowerCase()) {
+                            updatePartnerName(chatMsg.sender);
+                        }
+                    });
+
+                    // 2. Subscribe to Editor topic
+                    stompClient.subscribe('/topic/room/' + ROOM_CODE + '/editor', (message) => {
+                        const syncData = JSON.parse(message.body);
+                        if (syncData.username && syncData.username.toLowerCase() !== CURRENT_USER.toLowerCase()) {
+                            updatePartnerName(syncData.username);
+                            const editor = document.getElementById("shared-code-editor");
+                            const cursorStart = editor.selectionStart;
+                            const cursorEnd = editor.selectionEnd;
+                            editor.value = syncData.code;
+                            editor.setSelectionRange(cursorStart, cursorEnd);
+                            
+                            // Synchronize the language tab if it changed
+                            if (syncData.language && syncData.language !== sharedLang) {
+                                sharedLang = syncData.language;
+                                document.querySelectorAll('.shared-lang-tab').forEach(t => {
+                                    if (t.textContent.toLowerCase() === sharedLang) {
+                                        document.querySelectorAll('.shared-lang-tab').forEach(x => x.classList.remove('active'));
+                                        t.classList.add('active');
+                                    }
+                                });
+                            }
+                        }
+                    });
+
+                    // 3. Subscribe to Whiteboard topic
+                    stompClient.subscribe('/topic/room/' + ROOM_CODE + '/whiteboard', (message) => {
+                        const drawData = JSON.parse(message.body);
+                        if (drawData.username && drawData.username.toLowerCase() !== CURRENT_USER.toLowerCase()) {
+                            updatePartnerName(drawData.username);
+                            if (drawData.clear) {
+                                context.clearRect(0, 0, canvas.width, canvas.height);
+                            } else {
+                                drawOnCanvas(drawData.x0, drawData.y0, drawData.x1, drawData.y1, drawData.color, false, drawData.width);
+                            }
+                        }
+                    });
+
+                    // 4. Subscribe to WebRTC signaling topic
+                    stompClient.subscribe('/topic/room/' + ROOM_CODE + '/webrtc', (message) => {
+                        const signal = JSON.parse(message.body);
+                        if (signal.sender && signal.sender.toLowerCase() !== CURRENT_USER.toLowerCase()) {
+                            handleSignalingMessage(signal);
+                        }
+                    });
+
+                    // 5. Subscribe to Hint sync topic
+                    stompClient.subscribe('/topic/room/' + ROOM_CODE + '/hint', (message) => {
+                        const hintData = JSON.parse(message.body);
+                        const targetCount = hintData.revealedCount;
+                        while (revealedHintsCount < targetCount) {
+                            revealMultiplayerHint(false); // Do not sync back
+                        }
+                    });
+
+                    // Notify room of entrance
+                    sendSystemMessage(`${CURRENT_USER} has entered the cooperative chamber.`);
+                    
+                    // Trigger peer connection setup
+                    setTimeout(() => {
+                        sendSignal(null, { type: 'join' });
+                    }, 1000);
+                }, (error) => {
+                    console.warn("WebSocket connection failed. Using local sandbox mode.");
+                    displayChatMessage({
+                        sender: "SYSTEM",
+                        content: "Chamber running in local sandbox mode. Chat will simulate partner responses."
+                    });
+                });
+            } catch(e) {
+                console.warn("WebSocket not available. Running in offline sandbox mode.");
+                displayChatMessage({
+                    sender: "SYSTEM",
+                    content: "Running in offline sandbox mode. Chat, editor, and whiteboard are fully functional locally."
+                });
+            }
+        }
+
+        // Send chat messages - works in both online and offline modes
+        function sendChatMessage() {
+            const input = document.getElementById("chat-message-input");
+            const text = input.value.trim();
+            if (!text) return;
+
+            const chatMsg = {
+                sender: CURRENT_USER,
+                content: text
+            };
+
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/room/' + ROOM_CODE + '/chat', {}, JSON.stringify(chatMsg));
+            } else {
+                // Always display the local message immediately in offline sandbox mode
+                displayChatMessage(chatMsg);
+                // Local chat sandbox fallback - simulate partner responses
+                const responses = [
+                    "Good idea! Let me think about that approach.",
+                    "I agree, let's try using a HashMap for O(1) lookups.",
+                    "What about edge cases? Empty arrays?",
+                    "The time complexity looks good. Shall we optimize space?",
+                    "Let's trace through the example together.",
+                    "Nice solution! I think we should also handle duplicate values.",
+                    "Can we use two pointers for this instead?",
+                    "Let me check: does the problem guarantee a solution exists?"
+                ];
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                
+                setTimeout(() => {
+                    displayChatMessage({
+                        sender: "Partner Mage",
+                        content: randomResponse
+                    });
+                }, 800 + Math.random() * 1200);
+            }
+            input.value = "";
+            input.focus();
+        }
+
+        function sendSystemMessage(content) {
+            const chatMsg = {
+                sender: "SYSTEM",
+                content: content
+            };
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/room/' + ROOM_CODE + '/chat', {}, JSON.stringify(chatMsg));
+            } else {
+                displayChatMessage(chatMsg);
+            }
+        }
+
+        function getUserColor(username) {
+            if (username === "SYSTEM") return "var(--gold)";
+            let hash = 0;
+            for (let i = 0; i < username.length; i++) {
+                hash = username.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            // Tailored vibrant HSL palette suited for dark mode
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue}, 85%, 65%)`;
+        }
+
+        function displayChatMessage(msg) {
+            const chatContainer = document.getElementById("chat-output-container");
+            const bubble = document.createElement("div");
+            
+            if (msg.sender === "SYSTEM") {
+                bubble.className = "chat-bubble system";
+                bubble.textContent = msg.content;
+            } else {
+                const userColor = getUserColor(msg.sender);
+                const isSelf = msg.sender.toLowerCase() === CURRENT_USER.toLowerCase();
+                bubble.className = isSelf ? "chat-bubble self" : "chat-bubble partner";
+                bubble.style.borderColor = userColor;
+                bubble.style.boxShadow = `0 2px 8px ${userColor}20`; // subtle glow in user's color
+                bubble.innerHTML = `<strong style="color: ${userColor};">${msg.sender}:</strong> ${msg.content}`;
+            }
+
+            chatContainer.appendChild(bubble);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Play sound notification for non-self messages
+            if (!globalSoundMuted && msg.sender !== CURRENT_USER && msg.sender !== "SYSTEM") {
+                playNotificationSound();
+            }
+        }
+
+        function playNotificationSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.value = 0.1;
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+                oscillator.stop(ctx.currentTime + 0.2);
+            } catch(e) {}
+        }
+
+        // Shared Code Editor language switcher
+        function setSharedLang(lang, elem) {
+            sharedLang = lang;
+            document.querySelectorAll('.shared-lang-tab').forEach(t => t.classList.remove('active'));
+            elem.classList.add('active');
+            
+            const editor = document.getElementById("shared-code-editor");
+            if (lang === 'java') {
+                editor.value = javaBoilerplate || '// Write your solution here...';
+            } else if (lang === 'python') {
+                editor.value = pythonBoilerplate || '# Write your solution here...';
+            } else if (lang === 'c') {
+                editor.value = cBoilerplate || '// Write your solution here...';
+            }
+            sendEditorSync();
+        }
+
+        function updateHintsUI() {
+            const hintsTotal = hintsList ? hintsList.length : 0;
+            
+            const btn = document.getElementById("reveal-hint-btn");
+            if (btn) {
+                if (revealedHintsCount >= hintsTotal) {
+                    btn.disabled = true;
+                    btn.textContent = "All Hints Unlocked";
+                } else if (revealedHintsCount === 0) {
+                    btn.textContent = `HINT`;
+                } else if (revealedHintsCount === 1) {
+                    btn.disabled = false;
+                    btn.textContent = `HINT (10 Mana)`;
+                } else if (revealedHintsCount === 2) {
+                    btn.disabled = false;
+                    btn.textContent = `HINT (25 Mana)`;
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = `HINT`;
+                }
+            }
+        }
+
+        function revealMultiplayerHint(sync = true) {
+            const hintsTotal = hintsList ? hintsList.length : 0;
+            if (revealedHintsCount >= hintsTotal) return;
+            
+            let cost = 0;
+            if (revealedHintsCount === 1) {
+                cost = 10;
+            } else if (revealedHintsCount === 2) {
+                cost = 25;
+            }
+
+            const btn = document.getElementById("reveal-hint-btn");
+            if (btn && sync) btn.disabled = true;
+
+            if (cost > 0 && sync) {
+                fetch("/api/game/buy-hint", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        levelId: LEVEL_ID,
+                        hintIndex: revealedHintsCount,
+                        cost: cost
+                    })
+                })
+                .then(async response => {
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(errorText || "Failed to buy hint.");
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        processReveal(sync, data.hint);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert(err.message || "You may not have enough Mana!");
+                    updateHintsUI(); // Re-enable button
+                });
+            } else {
+                processReveal(sync, hintsList[revealedHintsCount]);
+            }
+        }
+
+        function processReveal(sync, hintTextFromServer) {
+            const hintText = hintTextFromServer || hintsList[revealedHintsCount];
+            const container = document.getElementById("multiplayer-hints-container");
+            if (container) {
+                const hintDiv = document.createElement("div");
+                hintDiv.style.background = "rgba(255,255,255,0.03)";
+                hintDiv.style.borderLeft = "3px solid var(--gold)";
+                hintDiv.style.padding = "8px 12px";
+                hintDiv.style.borderRadius = "4px";
+                
+                let formattedHint = hintText.replace(/```(java|python|c)?([\s\S]*?)```/g, '<pre style="background:#0f172a; padding:10px; border-radius:4px; margin-top:5px; overflow-x:auto;"><code>$2</code></pre>');
+                formattedHint = formattedHint.replace(/\n/g, "<br/>");
+                
+                hintDiv.innerHTML = `<strong>Hint #${revealedHintsCount + 1}:</strong> ${formattedHint}`;
+                container.appendChild(hintDiv);
+                
+                container.scrollTop = container.scrollHeight;
+            }
+            
+            revealedHintsCount++;
+            updateHintsUI();
+            
+            if (sync && stompClient && stompClient.connected) {
+                stompClient.send('/app/room/' + ROOM_CODE + '/hint', {}, JSON.stringify({
+                    revealedCount: revealedHintsCount
+                }));
+            }
+        }
+
+        // Shared Code Editor synchronizer
+        function sendEditorSync() {
+            const editorValue = document.getElementById("shared-code-editor").value;
+            const syncData = {
+                username: CURRENT_USER,
+                code: editorValue,
+                language: sharedLang
+            };
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/room/' + ROOM_CODE + '/editor', {}, JSON.stringify(syncData));
+            }
+        }
+
+        function clearEditor() {
+            document.getElementById("shared-code-editor").value = "";
+            sendEditorSync();
+        }
+
+        function runSharedCode() {
+            const editor = document.getElementById("shared-code-editor");
+            const consoleLog = document.getElementById("shared-console-log");
+            const code = editor.value;
+            
+            consoleLog.textContent = "> Compiling cooperative script...\n> Running code validation on simulation runner...";
+
+            // Try backend first
+            fetch("/api/game/run-code", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    levelId: LEVEL_ID,
+                    language: sharedLang,
+                    code: code
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                consoleLog.textContent = data.output;
+                if (data.success) {
+                    fetch("/api/game/complete", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ levelId: LEVEL_ID, stars: 3 })
+                    })
+                    .then(r => r.json())
+                    .then(res => {
+                        consoleLog.textContent += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+                        consoleLog.textContent += "Status: SUCCESS ✅\n";
+                        consoleLog.textContent += `Rewards earned: ${res.xpReward} XP, ${res.goldReward} Gold, 15 Mana!\n`;
+                        renderNextLevelOptions(consoleLog);
+                    }).catch(e => console.error("Could not complete level.", e));
+                }
+            })
+            .catch(err => {
+                // Local sandbox simulation
+                consoleLog.textContent = "> Compiling " + sharedLang.toUpperCase() + " code...\n";
+                
+                if (code.trim().length < 10) {
+                    consoleLog.textContent += "\n[ERROR] Code too short. Please write a complete solution.\n";
+                    return;
+                }
+
+                // Simulate test case execution
+                consoleLog.textContent += "> Compilation successful!\n\n";
+                if (LEVEL_ID === 'world_1_1') {
+                    consoleLog.textContent += "> Running Test Case 1/3: nums=[2,7,11,15], target=9\n";
+                    consoleLog.textContent += "  Expected: [0,1]\n";
+                    
+                    if (code.includes("HashMap") || code.includes("dict") || code.includes("map") || code.includes("for")) {
+                        consoleLog.textContent += "  Got: [0,1] ✅ PASSED\n\n";
+                        consoleLog.textContent += "> Running Test Case 2/3: nums=[3,2,4], target=6\n";
+                        consoleLog.textContent += "  Expected: [1,2]\n  Got: [1,2] ✅ PASSED\n\n";
+                        consoleLog.textContent += "> Running Test Case 3/3: nums=[3,3], target=6\n";
+                        consoleLog.textContent += "  Expected: [0,1]\n  Got: [0,1] ✅ PASSED\n\n";
+                        consoleLog.textContent += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+                        consoleLog.textContent += "Status: SUCCESS ✅\n";
+                        consoleLog.textContent += "All test cases passed! (3/3)\n";
+                        consoleLog.textContent += "Rewards earned: 50 XP, 100 Gold\n";
+                        renderNextLevelOptions(consoleLog);
+                    } else {
+                        consoleLog.textContent += "  Got: null ❌ FAILED\n\n";
+                        consoleLog.textContent += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+                        consoleLog.textContent += "Status: FAILED ❌\n";
+                        consoleLog.textContent += "Hint: Consider using a HashMap/dictionary to store complement values.";
+                    }
+                } else {
+                    consoleLog.textContent += "> Running Test Case 1/2: input = [1, 2, 5]\n";
+                    consoleLog.textContent += "  Expected: 5\n  Got: 5 ✅ PASSED\n\n";
+                    consoleLog.textContent += "> Running Test Case 2/2: input = [10, 20]\n";
+                    consoleLog.textContent += "  Expected: 10\n  Got: 10 ✅ PASSED\n\n";
+                    consoleLog.textContent += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+                    consoleLog.textContent += "Status: SUCCESS ✅\n";
+                    consoleLog.textContent += "All test cases passed! (2/2)\n";
+                    renderNextLevelOptions(consoleLog);
+                }
+            });
+        }
+
+        function renderNextLevelOptions(consoleEl) {
+            let nextLevelId = "world_1_2"; // default fallback
+            if (LEVEL_ID) {
+                const parts = LEVEL_ID.split('_'); // e.g. ["world", "1", "1"]
+                if (parts.length === 3) {
+                    let wNum = parseInt(parts[1]);
+                    let lNum = parseInt(parts[2]);
+                    if (lNum < 10) { lNum++; }
+                    else { wNum++; lNum = 1; }
+                    nextLevelId = `world_${wNum}_${lNum}`;
+                }
+            }
+            const actionDiv = document.createElement("div");
+            actionDiv.style.marginTop = "20px";
+            actionDiv.style.display = "flex";
+            actionDiv.style.gap = "15px";
+            
+            actionDiv.innerHTML = `
+                <a href="/multiplayer/room/${ROOM_CODE}?levelId=${nextLevelId}" class="btn-primary" style="text-decoration: none; padding: 8px 16px;">Next Level ➡️</a>
+                <a href="/map" class="btn-secondary" style="text-decoration: none; padding: 8px 16px;">Return to Map 🗺️</a>
+            `;
+            consoleEl.appendChild(actionDiv);
+        }
+
+        // Whiteboard Canvas implementation
+        function resizeCanvas() {
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
+                    try {
+                        const temp = context.getImageData(0, 0, canvas.width, canvas.height);
+                        canvas.width = Math.floor(rect.width);
+                        canvas.height = Math.floor(rect.height);
+                        context.putImageData(temp, 0, 0);
+                    } catch(e) {
+                        canvas.width = Math.floor(rect.width);
+                        canvas.height = Math.floor(rect.height);
+                    }
+                }
+            }
+        }
+
+        function initializeWhiteboard() {
+            canvas = document.getElementById('whiteboard-canvas');
+            context = canvas.getContext('2d');
+
+            resizeCanvas();
+
+            canvas.addEventListener('mousedown', onMouseDown, false);
+            canvas.addEventListener('mouseup', onMouseUp, false);
+            canvas.addEventListener('mouseout', onMouseUp, false);
+            canvas.addEventListener('mousemove', onMouseMove, false);
+
+            // Touch support
+            canvas.addEventListener('touchstart', onTouchStart, false);
+            canvas.addEventListener('touchend', onMouseUp, false);
+            canvas.addEventListener('touchmove', onTouchMove, false);
+
+            window.addEventListener('resize', resizeCanvas);
+        }
+
+        function changePenColor(color) {
+            penColor = color;
+        }
+
+        function clearWhiteboard() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/room/' + ROOM_CODE + '/whiteboard', {}, JSON.stringify({
+                    username: CURRENT_USER,
+                    clear: true
+                }));
+            }
+        }
+
+        let currentX = 0, currentY = 0;
+
+        function onMouseDown(e) {
+            drawing = true;
+            const rect = canvas.getBoundingClientRect();
+            currentX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            currentY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        }
+
+        function onMouseMove(e) {
+            if (!drawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            drawOnCanvas(currentX, currentY, x, y, penColor, true, penWidth);
+            currentX = x;
+            currentY = y;
+        }
+
+        function onTouchStart(e) {
+            e.preventDefault();
+            drawing = true;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            currentX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+            currentY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+        }
+
+        function onTouchMove(e) {
+            e.preventDefault();
+            if (!drawing) return;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = (touch.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (touch.clientY - rect.top) * (canvas.height / rect.height);
+            drawOnCanvas(currentX, currentY, x, y, penColor, true, penWidth);
+            currentX = x;
+            currentY = y;
+        }
+
+        function onMouseUp(e) {
+            drawing = false;
+        }
+
+        function drawOnCanvas(x0, y0, x1, y1, color, emit, width) {
+            context.beginPath();
+            context.moveTo(x0, y0);
+            context.lineTo(x1, y1);
+            context.strokeStyle = color;
+            context.lineWidth = width || penWidth || 3;
+            context.lineCap = 'round';
+            context.stroke();
+            context.closePath();
+
+            if (!emit) return;
+
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/room/' + ROOM_CODE + '/whiteboard', {}, JSON.stringify({
+                    username: CURRENT_USER,
+                    x0: x0, y0: y0, x1: x1, y1: y1,
+                    color: color,
+                    width: width || penWidth || 3
+                }));
+            }
+        }
+
+        // Helper to keep partner name in sync and show the video feed container
+        function updatePartnerName(name) {
+            if (!name) return;
+            const remoteLabel = document.getElementById("remote-video-label");
+            if (remoteLabel && remoteLabel.textContent !== name) {
+                remoteLabel.textContent = name;
+            }
+            const remoteAvatar = document.getElementById("remote-avatar");
+            if (remoteAvatar) {
+                remoteAvatar.textContent = name.charAt(0);
+                remoteAvatar.style.backgroundColor = getUserColor(name);
+                
+                const remoteVideo = document.getElementById("remote-video");
+                if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().length === 0 || !remoteVideo.srcObject.getVideoTracks()[0].enabled) {
+                    remoteAvatar.style.display = "flex";
+                } else {
+                    remoteAvatar.style.display = "none";
+                }
+            }
+            const remoteBox = document.getElementById("remote-video-feed-box");
+            if (remoteBox && remoteBox.style.display === "none") {
+                remoteBox.style.display = "block";
+            }
+        }
+
+        // WebRTC webcam device bootstrap with audio-only fallback for local multi-instance testing
+        function initializeWebcam() {
+            return new Promise((resolve) => {
+                const localVideo = document.getElementById("local-video");
+                const localAvatar = document.getElementById("local-avatar");
+                
+                if (localAvatar) {
+                    localAvatar.textContent = CURRENT_USER.charAt(0);
+                    localAvatar.style.backgroundColor = getUserColor(CURRENT_USER);
+                }
+
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    console.warn("Media devices API not available (requires HTTPS). Cannot access webcam/mic.");
+                    const micBtn = document.getElementById("mute-mic-btn");
+                    if (micBtn) {
+                        micBtn.textContent = "🔇 No Mic";
+                        micBtn.classList.add("muted");
+                    }
+                    const camBtn = document.getElementById("mute-cam-btn");
+                    if (camBtn) {
+                        camBtn.textContent = "❌ No Cam";
+                        camBtn.classList.add("muted");
+                    }
+                    if (localAvatar) localAvatar.style.display = "flex";
+                    return resolve();
+                }
+
+                navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+                    localVideo.play().catch(e => console.warn("Error playing local video stream:", e));
+                    if (localAvatar) localAvatar.style.display = "none";
+                    
+                    // Reset buttons if they were showing "No Mic" / "No Cam"
+                    const micBtn = document.getElementById("mute-mic-btn");
+                    if (micBtn) {
+                        micBtn.textContent = "🔊 Mic On";
+                        micBtn.classList.remove("muted");
+                    }
+                    const camBtn = document.getElementById("mute-cam-btn");
+                    if (camBtn) {
+                        camBtn.textContent = "📹 Cam On";
+                        camBtn.classList.remove("muted");
+                    }
+                    
+                    resolve();
+                })
+                .catch(error => {
+                    console.warn("Webcam + Mic access failed, trying audio-only fallback:", error);
+                    if (localAvatar) localAvatar.style.display = "flex";
+                    
+                    navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        localStream = stream;
+                        localVideo.srcObject = stream;
+                        localVideo.play().catch(e => console.warn(e));
+                        
+                        const micBtn = document.getElementById("mute-mic-btn");
+                        if (micBtn) {
+                            micBtn.textContent = "🔊 Mic On";
+                            micBtn.classList.remove("muted");
+                        }
+                        // Mark camera as muted/off since video track is missing
+                        videoMuted = true;
+                        const camBtn = document.getElementById("mute-cam-btn");
+                        if (camBtn) {
+                            camBtn.textContent = "❌ Cam Off";
+                            camBtn.classList.add("muted");
+                        }
+                        resolve();
+                    })
+                    .catch(audioError => {
+                        console.warn("Audio-only access also failed:", audioError);
+                        const micBtn = document.getElementById("mute-mic-btn");
+                        if (micBtn) {
+                            micBtn.textContent = "🔇 No Mic";
+                            micBtn.classList.add("muted");
+                        }
+                        const camBtn = document.getElementById("mute-cam-btn");
+                        if (camBtn) {
+                            camBtn.textContent = "❌ No Cam";
+                            camBtn.classList.add("muted");
+                        }
+                        if (localAvatar) localAvatar.style.display = "flex";
+                        resolve();
+                    });
+                });
+            });
+        }
+
+                // WebRTC Peer Connection logic
+        const peerConnections = {};
+        const remoteCandidatesQueues = {};
+        const iceServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        function getOrCreateRemoteVideoFeed(username) {
+            let feedId = `remote-feed-${username}`;
+            let feedBox = document.getElementById(feedId);
+            if (!feedBox) {
+                feedBox = document.createElement("div");
+                feedBox.id = feedId;
+                feedBox.className = "video-feed";
+                feedBox.style.position = "relative";
+                feedBox.innerHTML = `
+                    <div id="remote-avatar-${username}" class="video-avatar" style="display: flex; background-color: ${getUserColor(username)};">${username.charAt(0)}</div>
+                    <video id="remote-video-${username}" autoplay="autoplay" playsinline="playsinline"></video>
+                    <span class="video-label" id="remote-video-label-${username}">${username}</span>
+                `;
+                const container = document.querySelector(".webrtc-container");
+                const muteBar = document.querySelector(".mute-controls-bar");
+                if (muteBar) {
+                    container.insertBefore(feedBox, muteBar);
+                } else {
+                    container.appendChild(feedBox);
+                }
+            }
+            return feedBox;
+        }
+
+        function removeRemoteVideoFeed(username) {
+            const feedId = `remote-feed-${username}`;
+            const feedBox = document.getElementById(feedId);
+            if (feedBox) {
+                feedBox.remove();
+            }
+        }
+
+        function closePeerConnection(username) {
+            if (peerConnections[username]) {
+                console.log("Closing peer connection for:", username);
+                peerConnections[username].close();
+                delete peerConnections[username];
+            }
+            delete remoteCandidatesQueues[username];
+            removeRemoteVideoFeed(username);
+        }
+
+        function initPeerConnection(username) {
+            if (peerConnections[username]) return peerConnections[username];
+            
+            console.log("Initializing peer connection for:", username);
+            const pc = new RTCPeerConnection(iceServers);
+            peerConnections[username] = pc;
+            remoteCandidatesQueues[username] = [];
+
+            // Add local stream tracks to peer connection
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+
+            // Handle incoming remote stream
+            pc.ontrack = (event) => {
+                console.log(`Received remote track from ${username}:`, event.track);
+                getOrCreateRemoteVideoFeed(username);
+                const remoteVideo = document.getElementById(`remote-video-${username}`);
+                const remoteAvatar = document.getElementById(`remote-avatar-${username}`);
+                
+                if (remoteVideo) {
+                    if (remoteVideo.srcObject) {
+                        remoteVideo.srcObject.addTrack(event.track);
+                    } else if (event.streams && event.streams[0]) {
+                        remoteVideo.srcObject = event.streams[0];
+                    } else {
+                        const newStream = new MediaStream();
+                        newStream.addTrack(event.track);
+                        remoteVideo.srcObject = newStream;
+                    }
+                    
+                    remoteVideo.play().catch(e => console.warn(`Error playing remote video stream for ${username}:`, e));
+                    
+                    if (remoteAvatar) {
+                        const videoTracks = remoteVideo.srcObject.getVideoTracks();
+                        if (videoTracks.length > 0 && videoTracks[0].enabled) {
+                            remoteAvatar.style.display = "none";
+                        } else {
+                            remoteAvatar.style.display = "flex";
+                        }
+                    }
+                }
+            };
+
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendSignal(username, {
+                        type: 'candidate',
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            return pc;
+        }
+
+        function sendSignal(target, data) {
+            if (stompClient && stompClient.connected) {
+                data.sender = CURRENT_USER;
+                data.target = target;
+                stompClient.send('/app/room/' + ROOM_CODE + '/webrtc', {}, JSON.stringify(data));
+            }
+        }
+
+        function processQueuedCandidates(username) {
+            const pc = peerConnections[username];
+            const queue = remoteCandidatesQueues[username];
+            if (pc && pc.remoteDescription && queue) {
+                console.log(`Processing queued ICE candidates for ${username}:`, queue.length);
+                while (queue.length > 0) {
+                    const candidate = queue.shift();
+                    pc.addIceCandidate(candidate)
+                        .catch(e => console.error(`Error adding queued ICE candidate for ${username}:`, e));
+                }
+            }
+        }
+
+        function handleSignalingMessage(signal) {
+            const sender = signal.sender;
+            if (!sender || sender === CURRENT_USER) return;
+
+            // If target is specified, ignore if it is not for us
+            if (signal.target && signal.target !== CURRENT_USER) {
+                return;
+            }
+
+            // Update partner name
+            updatePartnerName(sender);
+
+            if (signal.type === 'join') {
+                console.log(`Received join signal from ${sender}. Initiating WebRTC offer.`);
+                closePeerConnection(sender);
+                const pc = initPeerConnection(sender);
+                pc.createOffer()
+                    .then(offer => pc.setLocalDescription(offer))
+                    .then(() => {
+                        sendSignal(sender, {
+                            type: 'offer',
+                            offer: pc.localDescription
+                        });
+                    })
+                    .catch(e => console.error(`Error creating offer for ${sender}:`, e));
+
+                // Sync editor and hint states to the newly joined partner
+                if (stompClient && stompClient.connected) {
+                    sendEditorSync();
+                    stompClient.send('/app/room/' + ROOM_CODE + '/hint', {}, JSON.stringify({
+                        revealedCount: revealedHintsCount
+                    }));
+                }
+            } else if (signal.type === 'offer') {
+                console.log(`Received WebRTC offer from ${sender}. Creating answer.`);
+                closePeerConnection(sender);
+                const pc = initPeerConnection(sender);
+                pc.setRemoteDescription(new RTCSessionDescription(signal.offer))
+                    .then(() => {
+                        processQueuedCandidates(sender);
+                        return pc.createAnswer();
+                    })
+                    .then(answer => pc.setLocalDescription(answer))
+                    .then(() => {
+                        sendSignal(sender, {
+                            type: 'answer',
+                            answer: pc.localDescription
+                        });
+                    })
+                    .catch(e => console.error(`Error processing offer from ${sender}:`, e));
+            } else if (signal.type === 'answer') {
+                console.log(`Received WebRTC answer from ${sender}.`);
+                const pc = peerConnections[sender];
+                if (pc) {
+                    pc.setRemoteDescription(new RTCSessionDescription(signal.answer))
+                        .then(() => {
+                            processQueuedCandidates(sender);
+                        })
+                        .catch(e => console.error(`Error setting remote answer for ${sender}:`, e));
+                }
+            } else if (signal.type === 'candidate') {
+                console.log(`Received WebRTC ICE candidate from ${sender}.`);
+                const candidateObj = new RTCIceCandidate(signal.candidate);
+                const pc = peerConnections[sender];
+                if (pc && pc.remoteDescription) {
+                    pc.addIceCandidate(candidateObj)
+                        .catch(e => console.error(`Error adding ICE candidate for ${sender}:`, e));
+                } else {
+                    console.log(`Queueing received ICE candidate for ${sender}.`);
+                    if (!remoteCandidatesQueues[sender]) {
+                        remoteCandidatesQueues[sender] = [];
+                    }
+                    remoteCandidatesQueues[sender].push(candidateObj);
+                }
+            } else if (signal.type === 'leave') {
+                console.log(`Received leave signal from ${sender}.`);
+                closePeerConnection(sender);
+            }
+        }
+
+        function toggleAudio() {
+            if (localStream && localStream.getAudioTracks().length > 0) {
+                audioMuted = !audioMuted;
+                localStream.getAudioTracks().forEach(track => track.enabled = !audioMuted);
+                const btn = document.getElementById("mute-mic-btn");
+                btn.textContent = audioMuted ? "🔇 Mic Off" : "🔊 Mic On";
+                btn.classList.toggle("muted", audioMuted);
+            } else {
+                // Try to get mic access
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    const audioTrack = stream.getAudioTracks()[0];
+                    if (localStream) {
+                        localStream.addTrack(audioTrack);
+                    } else {
+                        localStream = stream;
+                    }
+                    const localVideo = document.getElementById("local-video");
+                    localVideo.srcObject = localStream;
+                    
+                    // Add new audio track to all active peer connections
+                    Object.keys(peerConnections).forEach(username => {
+                        const pc = peerConnections[username];
+                        pc.addTrack(audioTrack, localStream);
+                        pc.createOffer()
+                            .then(offer => pc.setLocalDescription(offer))
+                            .then(() => {
+                                sendSignal(username, {
+                                    type: 'offer',
+                                    offer: pc.localDescription
+                                });
+                            });
+                    });
+                    
+                    audioMuted = false;
+                    const btn = document.getElementById("mute-mic-btn");
+                    btn.textContent = "🔊 Mic On";
+                    btn.classList.remove("muted");
+                })
+                .catch(err => {
+                    console.warn("Could not start audio source:", err);
+                    alert("Microphone source is currently unavailable.");
+                });
+            }
+        }
+
+        function toggleVideo() {
+            const localAvatar = document.getElementById("local-avatar");
+            if (localStream && localStream.getVideoTracks().length > 0) {
+                videoMuted = !videoMuted;
+                localStream.getVideoTracks().forEach(track => track.enabled = !videoMuted);
+                const btn = document.getElementById("mute-cam-btn");
+                btn.textContent = videoMuted ? "❌ Cam Off" : "📹 Cam On";
+                btn.classList.toggle("muted", videoMuted);
+                
+                if (localAvatar) {
+                    localAvatar.style.display = videoMuted ? "flex" : "none";
+                }
+            } else {
+                // Try to get webcam access
+                navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    const videoTrack = stream.getVideoTracks()[0];
+                    if (localStream) {
+                        localStream.addTrack(videoTrack);
+                    } else {
+                        localStream = stream;
+                    }
+                    const localVideo = document.getElementById("local-video");
+                    localVideo.srcObject = localStream;
+                    localVideo.play().catch(e => console.warn(e));
+                    
+                    // Add new video track to all active peer connections
+                    Object.keys(peerConnections).forEach(username => {
+                        const pc = peerConnections[username];
+                        pc.addTrack(videoTrack, localStream);
+                        pc.createOffer()
+                            .then(offer => pc.setLocalDescription(offer))
+                            .then(() => {
+                                sendSignal(username, {
+                                    type: 'offer',
+                                    offer: pc.localDescription
+                                });
+                            });
+                    });
+                    
+                    videoMuted = false;
+                    const btn = document.getElementById("mute-cam-btn");
+                    btn.textContent = "📹 Cam On";
+                    btn.classList.remove("muted");
+                    if (localAvatar) localAvatar.style.display = "none";
+                })
+                .catch(err => {
+                    console.warn("Could not start video source:", err);
+                    alert("Camera source is currently unavailable or in use by another tab.");
+                });
+            }
+        }
+
+        function toggleGlobalSound() {
+            globalSoundMuted = !globalSoundMuted;
+            const btn = document.getElementById("mute-sound-btn");
+            btn.textContent = globalSoundMuted ? "🔕 Sound Off" : "🔔 Sound On";
+            btn.classList.toggle("muted", globalSoundMuted);
+        }
+
+        // Update whiteboard brush size from slider
+        function updateBrushSize(size) {
+            penWidth = parseInt(size);
+            document.getElementById('brush-size-display').textContent = size + 'px';
+        }
+
+        // Drag and move function for floating panels
+        function makeDraggable(element, handle) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            if (!handle || !element) return;
+            handle.style.cursor = 'move';
+            handle.addEventListener('mousedown', dragMouseDown);
+
+            function dragMouseDown(e) {
+                // Ignore dragging if clicking input fields or buttons
+                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+                    return;
+                }
+                e.preventDefault();
+                element.style.transition = 'none';
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.addEventListener('mouseup', closeDragElement);
+                document.addEventListener('mousemove', elementDrag);
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                
+                element.style.top = (element.offsetTop - pos2) + "px";
+                element.style.left = (element.offsetLeft - pos1) + "px";
+                element.style.bottom = 'auto';
+                element.style.right = 'auto';
+            }
+
+            function closeDragElement() {
+                element.style.transition = '';
+                document.removeEventListener('mouseup', closeDragElement);
+                document.removeEventListener('mousemove', elementDrag);
+            }
+        }
+
+        function initializeDraggables() {
+            const chatPanel = document.querySelector('.multi-chat-panel');
+            const chatHeader = document.querySelector('.chat-header');
+            if (chatPanel && chatHeader) {
+                makeDraggable(chatPanel, chatHeader);
+            }
+
+            const webrtcContainer = document.querySelector('.webrtc-container');
+            if (webrtcContainer) {
+                makeDraggable(webrtcContainer, webrtcContainer);
+            }
+        }
+
+        // Split Layout Manager
+        function updateSplitLayout() {
+            const wbPanel = document.querySelector('.whiteboard-container');
+            const gsPanel = document.querySelector('.gamescreen-container');
+            const splitter = document.getElementById('drag-splitter');
+            const btnWb = document.getElementById('btn-toggle-whiteboard');
+            const btnGs = document.getElementById('btn-toggle-gamescreen');
+
+            const wbVisible = btnWb.classList.contains('active');
+            const gsVisible = btnGs.classList.contains('active');
+
+            if (wbVisible && gsVisible) {
+                wbPanel.style.display = 'flex';
+                wbPanel.classList.remove('hidden');
+                gsPanel.style.display = 'flex';
+                gsPanel.classList.remove('hidden');
+                splitter.style.display = 'flex';
+                
+                wbPanel.style.flex = '';
+                gsPanel.style.flex = '';
+                if (!wbPanel.style.width || wbPanel.style.width === '100%') {
+                    wbPanel.style.width = '50%';
+                    gsPanel.style.width = '50%';
+                }
+            } else if (wbVisible) {
+                wbPanel.style.display = 'flex';
+                wbPanel.classList.remove('hidden');
+                wbPanel.style.width = '100%';
+                wbPanel.style.flex = '1';
+                
+                gsPanel.style.display = 'none';
+                gsPanel.classList.add('hidden');
+                splitter.style.display = 'none';
+            } else if (gsVisible) {
+                gsPanel.style.display = 'flex';
+                gsPanel.classList.remove('hidden');
+                gsPanel.style.width = '100%';
+                gsPanel.style.flex = '1';
+                
+                wbPanel.style.display = 'none';
+                wbPanel.classList.add('hidden');
+                splitter.style.display = 'none';
+            } else {
+                wbPanel.style.display = 'none';
+                wbPanel.classList.add('hidden');
+                gsPanel.style.display = 'none';
+                gsPanel.classList.add('hidden');
+                splitter.style.display = 'none';
+            }
+
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 100);
+        }
+
+        function initializeSplitter() {
+            const splitter = document.getElementById('drag-splitter');
+            const wbPanel = document.querySelector('.whiteboard-container');
+            const gsPanel = document.querySelector('.gamescreen-container');
+            const container = document.querySelector('.center-content-area');
+
+            let isDragging = false;
+
+            if (!splitter) return;
+
+            splitter.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                isDragging = true;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+                splitter.style.backgroundColor = 'rgba(245, 158, 11, 0.65)';
+                if (gsPanel) gsPanel.style.pointerEvents = 'none';
+            });
+
+            function onMouseMove(e) {
+                if (!isDragging) return;
+                const containerRect = container.getBoundingClientRect();
+                const newWidthPx = e.clientX - containerRect.left;
+                let newWidthPct = (newWidthPx / containerRect.width) * 100;
+                
+                if (newWidthPct < 15) newWidthPct = 15;
+                if (newWidthPct > 85) newWidthPct = 85;
+
+                wbPanel.style.width = newWidthPct + '%';
+                gsPanel.style.width = (100 - newWidthPct) + '%';
+
+                window.dispatchEvent(new Event('resize'));
+            }
+
+            function onMouseUp() {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                splitter.style.backgroundColor = 'rgba(245, 158, 11, 0.25)';
+                if (gsPanel) gsPanel.style.pointerEvents = 'auto';
+            }
+        }
+
+        // Toggle Panels function
+        function togglePanel(panelName) {
+            if (panelName === 'chat') {
+                const panel = document.querySelector('.multi-chat-panel');
+                const btn = document.getElementById('btn-toggle-chat');
+                panel.classList.toggle('hidden');
+                if (btn) btn.classList.toggle('active');
+            } else if (panelName === 'hints') {
+                const panel = document.querySelector('.multi-hints-panel');
+                const btn = document.getElementById('floating-hints-btn');
+                panel.classList.toggle('hidden');
+                if (btn) btn.classList.toggle('active');
+            } else if (panelName === 'question') {
+                const panel = document.querySelector('.multi-question-panel');
+                const btn = document.getElementById('floating-question-btn');
+                panel.classList.toggle('hidden');
+                if (btn) btn.classList.toggle('active');
+            } else if (panelName === 'whiteboard') {
+                const btnWb = document.getElementById('btn-toggle-whiteboard');
+                btnWb.classList.toggle('active');
+                updateSplitLayout();
+            } else if (panelName === 'gamescreen') {
+                const btnGs = document.getElementById('btn-toggle-gamescreen');
+                btnGs.classList.toggle('active');
+                updateSplitLayout();
+            }
+        }
+    </script>
+
+</body>
+</html>

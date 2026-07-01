@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Nest: Spell Badges Vault</title>
+    <div th:replace="~{fragments :: imports}"></div>
+</head>
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- Navigation HUD -->
+    <div th:replace="~{fragments :: hudNav}"></div>
+
+    <!-- Achievements cabinet -->
+    <main style="flex: 1; padding: 40px 20px; max-width: 1200px; margin: 0 auto; width: 100%;">
+        <div class="parchment-container" style="border-width: 12px; margin-bottom: 30px;">
+            <h2 class="parchment-title">Ancient Badges Cabinet</h2>
+            
+            <p style="text-align: center; font-size: 0.95rem; margin-top: -10px; color: var(--gold); font-weight: bold; text-transform: uppercase;">
+                Claim magical artifacts by solving Algorithmic Quests
+            </p>
+
+            <div class="badges-container" style="margin-top: 30px;">
+                <!-- Renders the lists of achievements dynamically -->
+                <div class="badge-item" th:each="ach : ${achievements}"
+                     th:classappend="${currentUser.unlockedAchievements.contains(ach.id)} ? 'unlocked' : ''"
+                     th:title="${currentUser.unlockedAchievements.contains(ach.id)} ? 'Unlocked!' : 'Locked'">
+                    
+                    <div class="badge-icon">
+                        <!-- Render custom icon based on badge type -->
+                        <span th:if="${ach.id == 'first_login'}">🔑</span>
+                        <span th:if="${ach.id == 'first_challenge'}">📜</span>
+                        <span th:if="${ach.id == 'array_master'}">🏝️</span>
+                        <span th:if="${ach.id == 'string_wizard'}">🏰</span>
+                        <span th:if="${ach.id == 'linked_list_hero'}">⏳</span>
+                        <span th:if="${ach.id == 'stack_master'}">🌀</span>
+                        <span th:if="${ach.id == 'queue_champion'}">⚖️</span>
+                        <span th:if="${ach.id == 'search_explorer'}">🧭</span>
+                        <span th:if="${ach.id == 'multiplayer_expert'}">⚔️</span>
+                        <span th:if="${ach.id == 'coding_legend'}">👑</span>
+                    </div>
+                    
+                    <h3 style="font-family: var(--font-heading); color: #ffffff; font-size: 1.1rem; margin-bottom: 8px;" th:text="${ach.title}">First Login</h3>
+                    <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 12px;" th:text="${ach.description}">Successfully enter the Academy.</p>
+                    
+                    <div style="font-size: 0.75rem; font-weight: bold; background: rgba(255,255,255,0.03); border-radius: 4px; padding: 4px; border: 1px dashed #1e293b; display: flex; justify-content: center; gap: 8px; color: var(--gold); margin-bottom: 10px;">
+                        <span th:text="${'+' + ach.goldReward + ' Gold'}">+100 Gold</span>
+                        <span th:text="${'+' + ach.xpReward + ' XP'}">+100 XP</span>
+                    </div>
+
+                    <!-- Claim Button -->
+                    <div th:if="${currentUser.unlockedAchievements.contains(ach.id) && !currentUser.claimedAchievements.contains(ach.id)}" style="text-align: center;">
+                        <button class="btn-primary" style="font-size: 0.75rem; padding: 6px 12px; width: 100%; box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);" th:data-ach-id="${ach.id}" onclick="claimAchievement(this.getAttribute('data-ach-id'), this)">Claim Rewards!</button>
+                    </div>
+                    <div th:if="${currentUser.claimedAchievements.contains(ach.id)}" style="text-align: center;">
+                        <span style="font-size: 0.8rem; font-weight: bold; color: var(--emerald);">Claimed ✅</span>
+                    </div>
+
+                </div>
+            </div>
+            
+        </div>
+    </main>
+
+    <!-- Footer Component -->
+    <div th:replace="~{fragments :: footer}"></div>
+
+    <script>
+        function claimAchievement(achId, btnElement) {
+            btnElement.disabled = true;
+            btnElement.textContent = "Claiming...";
+            
+            fetch('/api/game/claim-achievement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ achievementId: achId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    btnElement.parentElement.innerHTML = '<span style="font-size: 0.8rem; font-weight: bold; color: var(--emerald);">Claimed ✅</span>';
+                    // Update Top Nav HUD Values if present
+                    const goldHUD = document.querySelector(".currency-item.gold span:last-child");
+                    if (goldHUD) goldHUD.textContent = data.user.gold;
+                    
+                    const xpHUD = document.getElementById("nav-level-progress"); // Optional: Update level/xp progress if applicable
+                } else {
+                    alert(data.message || "Failed to claim achievement");
+                    btnElement.disabled = false;
+                    btnElement.textContent = "Claim Rewards!";
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert("Error claiming achievement");
+                btnElement.disabled = false;
+                btnElement.textContent = "Claim Rewards!";
+            });
+        }
+    </script>
+
+</body>
+</html>

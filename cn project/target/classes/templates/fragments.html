@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+</head>
+<body>
+
+<!-- HUD Top Navigation Bar Fragment -->
+<div th:fragment="hudNav" class="hud-nav">
+    <a href="/" class="logo-container">
+        <img src="/images/dsa_nest_logo.png" alt="Code Nest Logo" style="height: 40px; image-rendering: pixelated; margin-right: 10px;">
+        <span class="logo-text">Code Nest</span>
+    </a>
+    
+    <!-- Navigation links -->
+    <ul class="nav-links">
+        <th:block th:if="${currentUser == null || currentUser.role != 'ADMIN'}">
+            <li><a href="/map"><i class="fa fa-map"></i> Worlds</a></li>
+            <li><a href="/leaderboard"><i class="fa fa-trophy"></i> Leaderboard</a></li>
+            <li><a href="/multiplayer"><i class="fa fa-users"></i> Forge (Co-op)</a></li>
+            <li><a href="/achievements"><i class="fa fa-shield"></i> Achievements</a></li>
+        </th:block>
+        <th:block th:if="${currentUser != null && currentUser.role == 'ADMIN'}">
+            <li><a href="/profile"><i class="fa fa-user"></i> Profile</a></li>
+            <li><a href="/admin"><i class="fa fa-cog"></i> Admin Settings</a></li>
+        </th:block>
+    </ul>
+
+    <!-- Theme and Auth Actions -->
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <!-- Theme Toggle Button -->
+        <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s ease; font-size: 1rem; padding: 0;">
+            <span id="theme-icon">🌙</span>
+        </button>
+
+        <!-- Currency Counters -->
+        <div class="currency-hud" th:if="${currentUser != null}">
+            <!-- Profile Avatar & Logout button -->
+            <a href="/profile" class="profile-hud-btn" style="display: inline-flex; align-items: center; gap: 8px;">
+                <img th:if="${currentUser.avatarDisplay.startsWith('/')}" th:src="${currentUser.avatarDisplay}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-color);" />
+                <span th:unless="${currentUser.avatarDisplay.startsWith('/')}" th:text="${currentUser.avatarDisplay}">🧙‍♂️</span>
+                <span th:text="${currentUser.fullName != null && !currentUser.fullName.isEmpty() ? currentUser.fullName : currentUser.username}">Coder</span>
+            </a>
+            <a href="/auth/logout" class="btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;">Exit</a>
+        </div>
+
+        <!-- Auth Buttons for Guests -->
+        <div class="currency-hud" th:if="${currentUser == null}">
+            <a href="/auth/login" class="btn-secondary" style="padding: 6px 14px;">Sign In</a>
+            <a href="/auth/register" class="btn-primary" style="padding: 6px 14px;">Sign Up</a>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            const isLight = document.documentElement.classList.toggle('light-mode');
+            localStorage.setItem('codenest_theme', isLight ? 'light' : 'dark');
+            updateThemeUI();
+        }
+
+        function updateThemeUI() {
+            const isLight = document.documentElement.classList.contains('light-mode');
+            const icon = document.getElementById('theme-icon');
+            if (icon) {
+                icon.textContent = isLight ? '☀️' : '🌙';
+            }
+        }
+
+        // Run UI check immediately when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', updateThemeUI);
+        } else {
+            updateThemeUI();
+        }
+
+        // Listen for storage event to sync theme changes from other windows/iframes
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'codenest_theme' || e.key === 'codenest-theme') {
+                const isLight = e.newValue === 'light';
+                if (isLight) {
+                    document.documentElement.classList.add('light-mode');
+                } else {
+                    document.documentElement.classList.remove('light-mode');
+                }
+                updateThemeUI();
+            }
+        });
+    </script>
+</div>
+
+<!-- Header Imports Fragment -->
+<th:block th:fragment="imports">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('codenest_theme');
+            if (savedTheme === 'light') {
+                document.documentElement.classList.add('light-mode');
+            } else {
+                document.documentElement.classList.remove('light-mode');
+            }
+        })();
+    </script>
+</th:block>
+
+<!-- Footer Component Fragment -->
+<footer th:fragment="footer" style="display: none;">
+</footer>
+
+<!-- Global Mute Script -->
+<script th:fragment="globalMuteScript">
+    let isGlobalMuted = localStorage.getItem('codenest_muted') === 'true';
+    
+    // Initialize mute state on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateMuteUI();
+    });
+
+    function toggleGlobalMute() {
+        isGlobalMuted = !isGlobalMuted;
+        localStorage.setItem('codenest_muted', isGlobalMuted);
+        updateMuteUI();
+    }
+
+    function updateMuteUI() {
+        const icon = document.getElementById('global-mute-icon');
+        const btn = document.getElementById('global-mute-toggle');
+        if (icon && btn) {
+            icon.textContent = isGlobalMuted ? '🔇' : '🔊';
+            btn.title = isGlobalMuted ? 'Sound Off - Click to enable' : 'Sound On - Click to mute';
+            btn.classList.toggle('muted', isGlobalMuted);
+        }
+    }
+</script>
+
+</body>
+</html>

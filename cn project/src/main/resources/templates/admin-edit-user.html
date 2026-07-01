@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Nest: Edit Mage</title>
+    <div th:replace="~{fragments :: imports}"></div>
+</head>
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- Navigation Header -->
+    <div th:replace="~{fragments :: hudNav}"></div>
+
+    <!-- Admin Console Dashboard -->
+    <main style="flex: 1; padding: 40px 20px; max-width: 600px; margin: 0 auto; width: 100%;">
+        <div class="parchment-container" style="border-width: 12px; margin-bottom: 30px;">
+            <h2 class="parchment-title" style="margin-bottom: 20px;">Edit Mage details</h2>
+            
+            <form th:action="@{/admin/user/edit/{id}(id=${targetUser.id})}" method="post" style="display: flex; flex-direction: column; gap: 15px;">
+                <div>
+                    <label style="display: block; font-weight: bold; color: var(--gold); margin-bottom: 5px;">Username</label>
+                    <input type="text" name="username" th:value="${targetUser.username}" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #1e293b; background: rgba(0,0,0,0.5); color: #fff;" />
+                </div>
+                <div>
+                    <label style="display: block; font-weight: bold; color: var(--gold); margin-bottom: 5px;">Email</label>
+                    <input type="email" name="email" th:value="${targetUser.email}" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #1e293b; background: rgba(0,0,0,0.5); color: #fff;" />
+                </div>
+                <div>
+                    <label style="display: block; font-weight: bold; color: var(--gold); margin-bottom: 5px;">Role</label>
+                    <select name="role" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #1e293b; background: rgba(0,0,0,0.5); color: #fff;">
+                        <option value="USER" th:selected="${targetUser.role == 'USER'}">USER</option>
+                        <option value="ADMIN" th:selected="${targetUser.role == 'ADMIN'}">ADMIN</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; font-weight: bold; color: var(--gold); margin-bottom: 5px;">XP Score</label>
+                    <input type="number" name="xp" th:value="${targetUser.xp}" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #1e293b; background: rgba(0,0,0,0.5); color: #fff;" />
+                </div>
+                <div>
+                    <label style="display: block; font-weight: bold; color: var(--gold); margin-bottom: 5px;">Gold</label>
+                    <input type="number" name="gold" th:value="${targetUser.gold}" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #1e293b; background: rgba(0,0,0,0.5); color: #fff;" />
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button type="submit" class="btn-primary" style="flex: 1; padding: 10px;">Save Changes</button>
+                    <a href="/admin" class="btn-secondary" style="flex: 1; padding: 10px; text-align: center; text-decoration: none;">Cancel</a>
+                </div>
+            </form>
+            
+        </div>
+    </main>
+
+    <!-- Footer Component -->
+    <div th:replace="~{fragments :: footer}"></div>
+
+</body>
+</html>

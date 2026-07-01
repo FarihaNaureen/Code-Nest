@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Nest: Hall of Fame</title>
+    <div th:replace="~{fragments :: imports}"></div>
+</head>
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- Navigation Header HUD -->
+    <div th:replace="~{fragments :: hudNav}"></div>
+
+    <!-- Leaderboard Content Section -->
+    <main style="flex: 1; padding: 40px 20px; max-width: 1000px; margin: 0 auto; width: 100%;">
+        <div class="parchment-container" style="border-width: 12px; margin-bottom: 30px;">
+            <h2 class="parchment-title">Ancient Hall of Fame</h2>
+            
+            <p style="text-align: center; font-size: 0.95rem; margin-top: -10px; color: var(--gold); font-weight: bold; text-transform: uppercase;">
+                Top Wizards of the Data Realms
+            </p>
+
+            <!-- Podiums for top 3 players -->
+            <div class="podium-container">
+                
+                <!-- Rank 2 (Silver) -->
+                <div class="podium-item silver-rank" th:if="${topPlayers.size() > 1}">
+                    <div style="font-size: 2rem; margin-bottom: 5px;">🥈</div>
+                    <div style="font-weight: 700; color: #cbd5e1;" th:text="${topPlayers[1].username}">Mage_Two</div>
+                    <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 10px;" th:text="${topPlayers[1].xp + ' XP'}">4,200 XP</div>
+                    <div class="podium-rank">2</div>
+                </div>
+                
+                <!-- Rank 1 (Gold) -->
+                <div class="podium-item gold-rank" th:if="${topPlayers.size() > 0}">
+                    <div style="font-size: 3rem; margin-bottom: 5px; filter: drop-shadow(0 0 10px var(--gold));">👑</div>
+                    <div style="font-weight: 900; color: var(--gold); font-size: 1.25rem;" th:text="${topPlayers[0].username}">Mage_One</div>
+                    <div style="font-size: 0.9rem; color: #e2e8f0; font-weight: bold; margin-bottom: 10px;" th:text="${topPlayers[0].xp + ' XP'}">5,800 XP</div>
+                    <div class="podium-rank">1</div>
+                </div>
+
+                <!-- Rank 3 (Bronze) -->
+                <div class="podium-item bronze-rank" th:if="${topPlayers.size() > 2}">
+                    <div style="font-size: 1.75rem; margin-bottom: 5px;">🥉</div>
+                    <div style="font-weight: 700; color: #cd7f32;" th:text="${topPlayers[2].username}">Mage_Three</div>
+                    <div style="font-size: 0.8rem; color: #cd7f32; margin-bottom: 10px;" th:text="${topPlayers[2].xp + ' XP'}">3,900 XP</div>
+                    <div class="podium-rank">3</div>
+                </div>
+                
+            </div>
+
+            <!-- List Table for remaining top 20 players -->
+            <table class="leader-table" style="color: #cbd5e1; border-color: #1e293b; margin-top: 30px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #1e293b; font-family: var(--font-heading); color: var(--gold); font-weight: bold;">
+                        <th style="width: 80px;">Rank</th>
+                        <th>Wizard</th>
+                        <th>XP Score</th>
+                        <th>Completed Realms</th>
+                        <th style="text-align: right;">Active Streak</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="player, stat : ${topPlayers}" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                        <td style="font-weight: 700;" th:text="${stat.count}">4</td>
+                        <td style="font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                            <img th:if="${player.avatarDisplay.startsWith('/')}" th:src="${player.avatarDisplay}" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;" />
+                            <span th:unless="${player.avatarDisplay.startsWith('/')}" th:text="${player.avatarDisplay}">🧙</span>
+                            <span th:text="${player.username}">CoderMaster</span>
+                        </td>
+                        <td th:text="${player.xp + ' XP'}">2,500 XP</td>
+                        <td th:text="${player.completedLevels.size() + ' levels'}">14 levels</td>
+                        <td style="text-align: right; color: #ef4444; font-weight: bold;" th:text="${'🔥 ' + player.streak + ' days'}">🔥 5 days</td>
+                    </tr>
+                </tbody>
+            </table>
+
+        </div>
+    </main>
+
+    <!-- Footer Component -->
+    <div th:replace="~{fragments :: footer}"></div>
+
+</body>
+</html>

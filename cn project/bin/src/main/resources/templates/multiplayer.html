@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Nest: The Wizard Council Forge</title>
+    <div th:replace="~{fragments :: imports}"></div>
+    <style>
+        .forge-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        @media (max-width: 768px) {
+            .forge-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .forge-card {
+            background: var(--bg-dark);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+        .forge-card:hover {
+            border-color: var(--gold);
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.15);
+        }
+        .forge-card h3 {
+            font-family: var(--font-heading);
+            color: var(--gold);
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 4px;
+        }
+        .generated-code-display {
+            display: none;
+            background: var(--bg-input);
+            border: 2px dashed var(--gold);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 15px;
+            animation: fadeIn 0.5s ease;
+        }
+        .generated-code-display.active { display: block; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .code-text {
+            font-family: 'Courier New', monospace;
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--gold);
+            letter-spacing: 8px;
+            text-transform: uppercase;
+        }
+        .copy-code-btn {
+            background: var(--nav-hover-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+        .copy-code-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .error-msg {
+            color: #dc2626;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-top: 8px;
+            display: none;
+        }
+        .error-msg.active { display: block; }
+        .loading-btn {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+
+    <!-- Navigation HUD -->
+    <div th:replace="~{fragments :: hudNav}"></div>
+
+    <!-- Main Content Lobby Area -->
+    <main style="flex: 1; padding: 40px 20px; max-width: 1000px; margin: 0 auto; width: 100%;">
+        <div class="parchment-container" style="border-width: 12px; margin-bottom: 30px;">
+            <h2 class="parchment-title">The Wizard Council Forge</h2>
+            
+            <p style="text-align: center; font-size: 0.95rem; margin-top: -10px; color: var(--gold); font-weight: bold; text-transform: uppercase;">
+                Collaborative coding, Whiteboard drawings, and Voice/Video channels
+            </p>
+
+            <div class="forge-grid">
+                
+                <!-- Create Room Block -->
+                <div class="forge-card">
+                    <h3>🔥 Forge a New Chamber</h3>
+                    <p style="font-size: 0.85rem; margin-bottom: 20px; color: #94a3b8;">Create a collaborative room. Invite friends using the generated chamber code to pair program or compete together.</p>
+                    
+                    <div class="form-group">
+                        <label for="new-room-name" style="color: var(--text-secondary);">Chamber Title</label>
+                        <input type="text" id="new-room-name" placeholder="e.g. Alchemist Vault Raiders" style="width: 100%;" />
+                    </div>
+                    
+                    <button id="create-room-btn" class="btn-primary" style="width: 100%; margin-top: 10px;" onclick="createChamberRoom()">⚡ Ignite the Forge</button>
+
+                    <!-- Generated Code Display -->
+                    <div id="generated-code-block" class="generated-code-display">
+                        <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 5px;">Your Chamber Code:</div>
+                        <div id="generated-room-code" class="code-text">------</div>
+                        <button class="copy-code-btn" onclick="copyRoomCode()">📋 Copy Code</button>
+                        <div style="margin-top: 12px;">
+                            <button class="btn-primary" style="padding: 10px 20px;" id="enter-created-room-btn" onclick="enterCreatedRoom()">Enter Chamber →</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Join Room Block -->
+                <div class="forge-card">
+                    <h3>🌀 Enter Existing Chamber</h3>
+                    <p style="font-size: 0.85rem; margin-bottom: 20px; color: #94a3b8;">Enter a chamber code shared by another wizard. You will instantly join their live editing, chat, and voice/video channels.</p>
+                    
+                    <div class="form-group">
+                        <label for="join-room-code" style="color: #cbd5e1;">Chamber Code (6 characters)</label>
+                        <input type="text" id="join-room-code" placeholder="e.g. AX98DY" style="background: #0c1020 !important; color: var(--gold) !important; border-color: #1e293b !important; text-transform: uppercase; font-family: 'Courier New', monospace; font-size: 1.2rem; letter-spacing: 4px; text-align: center; width: 100%;" maxlength="6" onkeydown="if(event.key==='Enter') joinChamberRoom()" oninput="clearJoinError()" />
+                    </div>
+
+                    <div id="join-error-msg" class="error-msg">Please enter a valid 6-character Chamber Code!</div>
+
+                    <button id="join-room-btn" class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="joinChamberRoom()">🌀 Cross Gate Portal</button>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Active Rooms Info -->
+        <div class="parchment-container" style="border-width: 8px;">
+            <h3 class="parchment-title" style="font-size: 1.1rem;">How to Use the Forge</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
+                <div style="text-align: center; padding: 15px; background: #070d19; border-radius: 12px; border: 1px solid #1e293b;">
+                    <div style="font-size: 2rem; margin-bottom: 8px;">1️⃣</div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff;">Create or Join</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Forge a new chamber or enter an existing code</div>
+                </div>
+                <div style="text-align: center; padding: 15px; background: #070d19; border-radius: 12px; border: 1px solid #1e293b;">
+                    <div style="font-size: 2rem; margin-bottom: 8px;">2️⃣</div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff;">Collaborate</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Chat, code together, and draw on the whiteboard</div>
+                </div>
+                <div style="text-align: center; padding: 15px; background: #070d19; border-radius: 12px; border: 1px solid #1e293b;">
+                    <div style="font-size: 2rem; margin-bottom: 8px;">3️⃣</div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #ffffff;">Solve Together</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Compile code, run tests, and conquer challenges</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Component -->
+    <div th:replace="~{fragments :: footer}"></div>
+
+    <script>
+        let generatedCode = '';
+
+        function createChamberRoom() {
+            const nameInput = document.getElementById("new-room-name").value.trim();
+            if (!nameInput) {
+                alert("Please specify a Chamber Title!");
+                return;
+            }
+
+            const btn = document.getElementById("create-room-btn");
+            btn.textContent = "⏳ Forging...";
+            btn.classList.add("loading-btn");
+
+            // Generate random 6-character code
+            const codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            generatedCode = "";
+            for (let i = 0; i < 6; i++) {
+                generatedCode += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
+            }
+
+            // Show the generated code
+            setTimeout(() => {
+                document.getElementById("generated-room-code").textContent = generatedCode;
+                document.getElementById("generated-code-block").classList.add("active");
+                btn.textContent = "✅ Chamber Created!";
+                btn.classList.remove("loading-btn");
+            }, 500);
+        }
+
+        function enterCreatedRoom() {
+            if (generatedCode) {
+                const nameInput = document.getElementById("new-room-name").value.trim();
+                const levelSelect = document.getElementById("new-room-level");
+                const levelId = levelSelect ? levelSelect.value : "";
+                window.location.href = "/multiplayer/room/" + generatedCode + "?name=" + encodeURIComponent(nameInput) + "&levelId=" + levelId + "&host=true";
+            }
+        }
+
+        function copyRoomCode() {
+            navigator.clipboard.writeText(generatedCode).then(() => {
+                const btn = event.target;
+                btn.textContent = "✅ Copied!";
+                setTimeout(() => { btn.textContent = "📋 Copy Code"; }, 2000);
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = generatedCode;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                event.target.textContent = "✅ Copied!";
+                setTimeout(() => { event.target.textContent = "📋 Copy Code"; }, 2000);
+            });
+        }
+
+        function joinChamberRoom() {
+            const codeInput = document.getElementById("join-room-code").value.trim().toUpperCase();
+            const errorMsg = document.getElementById("join-error-msg");
+            
+            if (!codeInput || codeInput.length < 4 || codeInput.length > 6) {
+                errorMsg.textContent = "Please enter a valid 4-6 character Chamber Code!";
+                errorMsg.classList.add("active");
+                document.getElementById("join-room-code").style.borderColor = "#dc2626";
+                return;
+            }
+
+            // Clear any errors
+            errorMsg.classList.remove("active");
+            document.getElementById("join-room-code").style.borderColor = "var(--parchment-border)";
+
+            const btn = document.getElementById("join-room-btn");
+            btn.textContent = "🌀 Entering portal...";
+            btn.classList.add("loading-btn");
+
+            // Navigate to multiplayer room
+            setTimeout(() => {
+                window.location.href = "/multiplayer/room/" + codeInput;
+            }, 400);
+        }
+
+        function clearJoinError() {
+            document.getElementById("join-error-msg").classList.remove("active");
+            document.getElementById("join-room-code").style.borderColor = "var(--parchment-border)";
+        }
+    </script>
+
+</body>
+</html>
